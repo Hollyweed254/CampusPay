@@ -1,0 +1,9 @@
+Options -Indexes
+
+# Front controller. FallbackResource (not mod_rewrite) because REQUEST_FILENAME
+# does not see through the /CampusPay Alias, which makes !-f loops forever.
+FallbackResource /CampusPay/index.php
+
+<FilesMatch "^\.">
+  Require all denied
+</FilesMatch>
