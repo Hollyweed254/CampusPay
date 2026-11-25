@@ -11,6 +11,7 @@ use App\Controllers\DisputesController;
 use App\Controllers\IntegrationsController;
 use App\Controllers\PaymentRequestsController;
 use App\Controllers\ReconciliationController;
+use App\Controllers\SecurityController;
 use App\Controllers\SettingsController;
 use App\Controllers\TransactionsController;
 use App\Controllers\WebhookEventsController;
@@ -21,6 +22,8 @@ $router->get('/legal/terms', [new PublicController(), 'terms']);
 
 $router->get('/login', [new AuthController(), 'showLogin']);
 $router->post('/login', [new AuthController(), 'login']);
+$router->get('/login/2fa', [new AuthController(), 'showTotp']);
+$router->post('/login/2fa', [new AuthController(), 'verifyTotp']);
 $router->post('/logout', [new AuthController(), 'logout']);
 
 $router->get('/admin', [new AdminController(), 'overview']);
@@ -66,6 +69,12 @@ $router->post('/admin/api-credentials/{id}/revoke', [new ApiCredentialsControlle
 
 $router->get('/admin/settings', [new SettingsController(), 'index']);
 $router->post('/admin/settings', [new SettingsController(), 'update']);
+
+$router->get('/admin/security', [new SecurityController(), 'index']);
+$router->post('/admin/security/totp/start', [new SecurityController(), 'startTotp']);
+$router->post('/admin/security/totp/enable', [new SecurityController(), 'enableTotp']);
+$router->post('/admin/security/totp/disable', [new SecurityController(), 'disableTotp']);
+$router->post('/admin/security/policy', [new SecurityController(), 'updatePolicy']);
 
 $router->get('/admin/{section}', [new AdminController(), 'section']);
 

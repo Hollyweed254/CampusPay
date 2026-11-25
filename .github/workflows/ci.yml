@@ -1,0 +1,98 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Lint and test (PHP 8.2)
+    runs-on: ubuntu-latest
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: campuspay
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping --silent"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up PHP 8.2
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: openssl, mbstring, curl, json, pdo, pdo_mysql
+          coverage: none
+
+      - name: Lint every PHP file
+        run: |
+          status=0
+          while IFS= read -r file; do
+            if ! php -l "$file" >/dev/null; then
+              status=1
+            fi
+          done < <(git ls-files '*.php')
+          if [ "$status" -ne 0 ]; then
+            echo "::error::PHP syntax errors found (see above)."
+            exit $status
+          fi
+          echo "All PHP files parse cleanly."
+
+      - name: Create .env
+        run: |
+          cp .env.example .env
+          php -r '
+            $path = ".env";
+            $lines = file($path, FILE_IGNORE_NEW_LINES);
+            $overrides = [
+              "APP_KEY" => base64_encode(random_bytes(32)),
+              "APP_ENV" => "local",
+              "DB_HOST" => "127.0.0.1",
+              "DB_PORT" => "3306",
+              "DB_NAME" => "campuspay",
+              "DB_USER" => "root",
+              "DB_PASS" => "root",
+            ];
+            foreach ($lines as $i => $line) {
+              [$key] = array_pad(explode("=", $line, 2), 2, "");
+              if (array_key_exists($key, $overrides)) {
+                $lines[$i] = $key . "=" . $overrides[$key];
+              }
+            }
+            file_put_contents($path, implode(PHP_EOL, $lines) . PHP_EOL);
+          '
+
+      - name: Wait for MySQL
+        run: |
+          for i in $(seq 1 30); do
+            if mysqladmin ping -h 127.0.0.1 -uroot -proot --silent; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::MySQL did not become ready."
+          exit 1
+
+      - name: Import schema
+        run: mysql -h 127.0.0.1 -uroot -proot < database/campuspay.sql
+
+      - name: Run test suite
+        run: php tests/run.php

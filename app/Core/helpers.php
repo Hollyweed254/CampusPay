@@ -176,4 +176,10 @@ function log_exception(Throwable $e): void
 {
     $line = sprintf("[%s] %s: %s in %s:%d\n%s\n", gmdate('c'), $e::class, $e->getMessage(), $e->getFile(), $e->getLine(), $e->getTraceAsString());
     @file_put_contents(BASE_PATH . '/storage/logs/app.log', $line, FILE_APPEND | LOCK_EX);
+
+    try {
+        App\Services\ErrorReporter::alert($e::class . ': ' . $e->getMessage(), $e->getFile() . ':' . $e->getLine());
+    } catch (Throwable $ignored) {
+        // Alerting must never mask the original failure.
+    }
 }

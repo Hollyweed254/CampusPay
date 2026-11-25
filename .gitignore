@@ -10,3 +10,5 @@
 Thumbs.db
 /storage/cache/*
 !/storage/cache/.gitkeep
+/storage/backups/*
+!/storage/backups/.gitkeep

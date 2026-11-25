@@ -1,0 +1,17 @@
+# CampusPay scheduled jobs.
+# Install with:  crontab /var/www/campuspay/deploy/cron/campuspay.cron
+# (or append these lines to the deploy user's crontab).
+#
+# Variables defined here are expanded in the commands below.
+
+SHELL=/bin/sh
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+APP_DIR=/var/www/campuspay
+PHP_BIN=/usr/bin/php8.2
+
+# Upkeep: expire checkout windows, reconcile open M-Pesa attempts, deliver
+# due webhooks. Must run every minute; the Settings page shows last_cron_run_at.
+* * * * * $PHP_BIN $APP_DIR/bin/campuspay-cron.php >> /var/log/campuspay/cron.log 2>&1
+
+# Nightly backup: gzipped dump with retention + optional off-host copy.
+15 2 * * * $PHP_BIN $APP_DIR/bin/campuspay-backup.php >> /var/log/campuspay/backup.log 2>&1

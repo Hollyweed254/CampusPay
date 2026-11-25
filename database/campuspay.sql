@@ -30,6 +30,9 @@ CREATE TABLE `administrators` (
   `name` varchar(100) NOT NULL,
   `email` varchar(150) NOT NULL,
   `password_hash` varchar(255) NOT NULL,
+  `totp_secret` varchar(255) DEFAULT NULL,
+  `totp_enabled_at` datetime DEFAULT NULL,
+  `totp_last_counter` bigint(20) unsigned DEFAULT NULL,
   `role` enum('admin','superadmin') NOT NULL DEFAULT 'admin',
   `status` enum('active','disabled') NOT NULL DEFAULT 'active',
   `last_login_at` datetime DEFAULT NULL,
@@ -322,12 +325,13 @@ CREATE TABLE `webhook_deliveries` (
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
 
--- Default operational settings (mirrors migrations 002–004).
+-- Default operational settings (mirrors migrations 002–005).
 INSERT INTO `system_settings` (`setting_key`, `value`) VALUES
   ('api_rate_limit_per_minute', '120'),
   ('checkout_ttl_minutes', '30'),
   ('max_amount_kes', '250000'),
   ('reconciliation_stale_after_minutes', '2'),
+  ('require_admin_totp', '0'),
   ('status_check_cooldown_seconds', '20'),
   ('webhook_max_attempts', '5')
 ON DUPLICATE KEY UPDATE `value` = VALUES(`value`);
@@ -337,4 +341,5 @@ INSERT IGNORE INTO `schema_migrations` (`migration`) VALUES
   ('001_initial_schema.sql'),
   ('002_checkout_and_api_security.sql'),
   ('003_provider_confirmation.sql'),
-  ('004_disputes_and_api_limits.sql');
+  ('004_disputes_and_api_limits.sql'),
+  ('005_admin_totp.sql');
