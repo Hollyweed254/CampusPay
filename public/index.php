@@ -20,6 +20,16 @@ set_exception_handler(static function (Throwable $e): void {
     View::render('errors/500', ['title' => 'Server error'], 'layouts/base');
 });
 
+// Fatal errors (out of memory, parse of an included file, …) never reach the
+// exception handler; capture them so they are logged and alerted too.
+register_shutdown_function(static function (): void {
+    $error = error_get_last();
+    if ($error === null || !in_array($error['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR], true)) {
+        return;
+    }
+    log_exception(new ErrorException($error['message'], 0, $error['type'], $error['file'], $error['line']));
+});
+
 $router = new Router(app_base_path());
 require BASE_PATH . '/routes/web.php';
 require BASE_PATH . '/routes/api.php';

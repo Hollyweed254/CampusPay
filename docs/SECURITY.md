@@ -44,12 +44,27 @@ protect with OS/DB permissions and backups).
 | Login errors | Generic message; dummy hash keeps timing uniform for unknown emails |
 | Brute force | 5 failed attempts per email+IP per 15 minutes (`login_attempts`), then 429 |
 | Sessions | `HttpOnly`, `SameSite=Lax`, `Secure` in production, strict mode, ID regenerated at login, full destroy at logout |
+| Two-factor auth | Optional TOTP (RFC 6238): 6 digits, 30-second step, seed stored AES-256-GCM encrypted; a superadmin can require it for every administrator |
 | Roles | `superadmin` required for users, API credentials and settings; enforced server-side as well as in the nav |
 | CSRF | Per-session token, `hash_equals`, checked on every state-changing POST |
 | XSS | All output escaped through `e()`; CSP blocks inline script and third-party origins |
 | SQL injection | 100% prepared statements via `q()`; `ATTR_EMULATE_PREPARES=false` |
 | Headers | `nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy`, `Permissions-Policy`, `X-Permitted-Cross-Domain-Policies: none`, CSP (`object-src 'none'`, `frame-ancestors 'none'`), HSTS in production over HTTPS |
 | Audit | Logins, failures, admin writes, disputes, settings, credentials, payments |
+
+### Administrator two-factor (TOTP)
+
+- RFC 6238, HMAC-SHA1, 6 digits, 30-second step; compatible with any
+  authenticator app (Google Authenticator, Authy, 1Password, …).
+- The seed is shown once at enrolment and stored AES-256-GCM encrypted
+  (`SecretBox`, keyed by `APP_KEY`); only an accepted code enables it.
+- Sign-in is two-phase: password first, then the code on `/login/2fa`. Both
+  steps regenerate the session ID and CSRF token, and a challenge expires after
+  10 minutes.
+- Accepted codes are recorded (`totp_last_counter`) so a code cannot be
+  replayed inside its window; wrong codes count toward the same login throttle.
+- A superadmin can set `require_admin_totp=1` to force enrolment at next
+  sign-in. Recovery is deliberate and out-of-band: `bin/campuspay-admin-2fa.php`.
 
 ### API (`/api/v1`)
 
@@ -111,8 +126,9 @@ protect with OS/DB permissions and backups).
 
 ## 5. Known limitations
 
-- No multi-factor authentication for administrators. Use strong unique
-  passwords and network restrictions.
+- Two-factor authentication is off by default. Each administrator can enable it
+  under Security, and a superadmin can require it for everyone — but until one
+  of those happens, a password alone still grants access.
 - Webhook URLs are administrator-supplied and not egress-filtered; an admin can
   point one at an internal address. Restrict outbound traffic at the firewall
   if that matters in your environment.

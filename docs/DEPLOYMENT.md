@@ -90,12 +90,19 @@ installing if your process requires it.
 | `DARAJA_CALLBACK_TOKEN` | Random secret path segment; `php -r "echo bin2hex(random_bytes(16));"` |
 | `DARAJA_CALLBACK_IPS` | Optional comma-separated Safaricom egress IPs; empty = token only |
 | `ADMIN_EMAIL` `ADMIN_PASSWORD` | Used only by `seed-admin.php` |
+| `APP_URL` | Public base URL; used for alert `From` addresses and absolute links |
+| `BACKUP_DIR` `BACKUP_RETENTION_DAYS` `BACKUP_MYSQLDUMP` `BACKUP_UPLOAD_COMMAND` | Nightly backup (section 7.2). Directory defaults to `storage/backups`, retention to 14 days |
+| `ERROR_ALERT_WEBHOOK` `ERROR_ALERT_EMAIL` | Where unexpected errors are reported (section 9); empty = log file only |
 
 The platform **fails closed**: if any of the five Daraja values or the callback
 token is missing, no STK Push is attempted and the admin UI reports Daraja as
 not configured. There is no simulation mode.
 
 ## 5. Web server
+
+Ready-made vhosts — HTTPS redirect, TLS, and security headers for static assets
+— live in `deploy/apache/campuspay.conf` and `deploy/nginx/campuspay.conf`.
+The snippets below are the minimal forms to adapt.
 
 ### Apache (local XAMPP or production vhost)
 
@@ -168,10 +175,16 @@ gives no protection above `root` because only `public/` is referenced.
 
 ## 7. Cron
 
-Every minute, run the upkeep task:
+Two jobs. Install both at once from the shipped crontab:
 
 ```
-* * * * * php /var/www/campuspay/bin/campuspay-cron.php >> /var/log/campuspay-cron.log 2>&1
+crontab /var/www/campuspay/deploy/cron/campuspay.cron
+```
+
+### 7.1 Upkeep (every minute)
+
+```
+* * * * * php /var/www/campuspay/bin/campuspay-cron.php >> /var/log/campuspay/cron.log 2>&1
 ```
 
 Windows Task Scheduler (this machine):
@@ -188,6 +201,20 @@ One run expires checkout windows, reconciles open M-Pesa attempts (if Daraja is
 configured), and delivers due webhooks. Output is one line per task; see
 OPERATIONS.md for reading it.
 
+### 7.2 Backup (nightly)
+
+```
+15 2 * * * php /var/www/campuspay/bin/campuspay-backup.php >> /var/log/campuspay/backup.log 2>&1
+```
+
+`campuspay-backup.php` runs `mysqldump --single-transaction --routines --triggers`
+through `gzip`, writes `storage/backups/campuspay-<UTC>.sql.gz`, prunes dumps
+older than `BACKUP_RETENTION_DAYS` (default 14), and — when
+`BACKUP_UPLOAD_COMMAND` is set — runs it with `{file}` replaced by the dump
+path, so you can ship the file off-host without the app depending on any cloud
+SDK. Options: `--keep=<days>`, `--dir=<path>`, `--no-upload`. Restore is covered
+in OPERATIONS.md §6.
+
 ## 8. Post-deploy checklist
 
 1. `GET /api/v1/health` returns `{"status":"ok",…}`.
@@ -201,3 +228,30 @@ OPERATIONS.md for reading it.
    signed webhook.
 7. Run `php tests/run.php` on the server (development/staging only; the suite
    creates and removes its own rows).
+
+## 9. Error reporting
+
+Every uncaught exception, and every fatal error (out of memory, a parse error in
+an included file), is written to `storage/logs/app.log` with a UTC timestamp and
+a stack trace. Nothing leaves the server unless you configure alerting.
+
+Set either variable to be told about an error without waiting for a user to
+report it:
+
+```
+ERROR_ALERT_WEBHOOK=https://hooks.slack.com/services/…
+ERROR_ALERT_EMAIL=ops@example.com
+```
+
+- **Webhook** — receives `POST {"text": "CampusPay error: …"}`. Works with
+  Slack, Discord, and any endpoint that accepts that shape.
+- **Email** — sent with PHP's `mail()` from `campuspay@<APP_URL host>`; the
+  server must be able to send mail (a local MTA or an `msmtp`-style relay).
+
+Alerts for the same error are throttled to one per five minutes, keyed by a hash
+of the message, so a repeating failure cannot become a flood. Alerting failures
+are swallowed: a broken webhook never masks the original error.
+
+Leave both blank for log-file-only behaviour. `APP_DEBUG` only affects what a
+browser sees; it never changes what is logged. The log directory must exist and
+be writable by the web-server user (section 2).

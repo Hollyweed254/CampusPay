@@ -53,6 +53,10 @@ Every save writes `settings.updated` to the audit log with old and new values
 for each changed key. The page also shows readiness flags (APP_KEY, Daraja
 credentials, callback IP list, production mode) but never prints secrets.
 
+Two-factor enforcement lives on **Security → Enforcement** (`require_admin_totp`,
+a superadmin toggle, off by default). When on, any administrator without
+two-factor is asked to enrol at their next sign-in and cannot turn it back off.
+
 ## 3. Routine checks
 
 **Daily**
@@ -146,6 +150,24 @@ days. The application itself never truncates it.
 5. Every transition is audited (`dispute.opened`, `dispute.review_started`,
    `dispute.resolved`, `dispute.rejected`). Closed disputes cannot be reopened;
    open a new one against the new status if needed.
+
+### Administrator lost their authenticator
+
+An administrator who cannot produce a code is locked out once two-factor is
+enrolled. Recovery is deliberate and out-of-band — there is no in-app bypass:
+
+```
+php bin/campuspay-admin-2fa.php --email=admin@example.com --status
+php bin/campuspay-admin-2fa.php --email=admin@example.com --disable
+```
+
+`--disable` clears the stored seed, so the administrator can sign in with the
+password alone and enrol a new device under **Security**. Run it only after
+confirming the person's identity out of band, and treat it as a sensitive
+operator action (it leaves an audit trail only if the account is used again).
+
+If `require_admin_totp=1`, the account will be asked to re-enrol immediately at
+next sign-in.
 
 ### Lost `APP_KEY`
 

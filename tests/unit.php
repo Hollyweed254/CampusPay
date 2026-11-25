@@ -5,6 +5,7 @@ use App\Services\ApiAuth;
 use App\Services\PhoneNumber;
 use App\Services\Reference;
 use App\Services\SecretBox;
+use App\Services\Totp;
 
 require_once BASE_PATH . '/clients/campusfind/CampusPayClient.php';
 
@@ -146,4 +147,76 @@ test('status chips map known statuses', function (): void {
 test('phone masking keeps the last four digits only', function (): void {
     same('••• 5678', mask_phone('254712345678'));
     same('—', mask_phone(null));
+});
+
+group('Two-factor authentication (TOTP)');
+
+/** RFC 4648 base32 of the RFC 6238 Appendix B secret, "12345678901234567890". */
+const TOTP_RFC_SECRET = 'GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ';
+
+test('base32 encodes the RFC 6238 Appendix B seed', function (): void {
+    same(TOTP_RFC_SECRET, Totp::base32Encode('12345678901234567890'));
+});
+test('base32 decode/encode round-trips', function (): void {
+    $bytes = random_bytes(20);
+    same($bytes, Totp::base32Decode(Totp::base32Encode($bytes)));
+});
+test('base32 decode rejects invalid characters', function (): void {
+    same('', Totp::base32Decode('0189!'));
+});
+
+test('codes match the RFC 6238 Appendix B vectors (SHA1, 6 digits)', function (): void {
+    $vectors = [
+        1 => '287082',          // T = 59
+        37037036 => '081804',   // T = 1111111109
+        37037037 => '050471',   // T = 1111111111
+        41152263 => '005924',   // T = 1234567890
+        66666666 => '279037',   // T = 2000000000
+        666666666 => '353130',  // T = 20000000000
+    ];
+    foreach ($vectors as $counter => $expected) {
+        same($expected, Totp::codeAt(TOTP_RFC_SECRET, $counter), 'counter ' . $counter);
+    }
+});
+
+test('verify accepts the current code and reports its counter', function (): void {
+    same(1, Totp::verify(TOTP_RFC_SECRET, '287082', 1, 59));
+});
+test('verify tolerates one step of clock drift', function (): void {
+    same(1, Totp::verify(TOTP_RFC_SECRET, '287082', 1, 61));
+    same(1, Totp::verify(TOTP_RFC_SECRET, '287082', 1, 30));
+});
+test('verify rejects wrong, malformed and empty codes', function (): void {
+    same(null, Totp::verify(TOTP_RFC_SECRET, '000000', 1, 59));
+    same(null, Totp::verify(TOTP_RFC_SECRET, '28708', 1, 59));
+    same(null, Totp::verify(TOTP_RFC_SECRET, 'abcdef', 1, 59));
+    same(null, Totp::verify(TOTP_RFC_SECRET, '', 1, 59));
+    same(null, Totp::verify('', '287082', 1, 59));
+});
+test('verify refuses a replayed counter via minCounter', function (): void {
+    same(null, Totp::verify(TOTP_RFC_SECRET, '287082', 1, 59, 1));
+});
+test('provisioning URI carries issuer, account, secret and parameters', function (): void {
+    $uri = Totp::provisioningUri('CampusPay', 'admin@example.com', TOTP_RFC_SECRET);
+    contains('otpauth://totp/CampusPay:admin%40example.com', $uri);
+    contains('secret=' . TOTP_RFC_SECRET, $uri);
+    contains('algorithm=SHA1', $uri);
+    contains('digits=6', $uri);
+    contains('period=30', $uri);
+});
+test('generateSecret produces a usable 32-character base32 seed', function (): void {
+    $secret = Totp::generateSecret();
+    truthy(preg_match('/^[A-Z2-7]{32}$/', $secret) === 1, 'unexpected seed ' . $secret);
+    $code = (string) Totp::codeAt($secret, intdiv(time(), 30));
+    truthy(Totp::verify($secret, $code) !== null, 'a freshly generated code should verify');
+});
+test('verifySealed reads a SecretBox-encrypted seed and blocks replay', function (): void {
+    $sealed = SecretBox::encrypt(TOTP_RFC_SECRET);
+    $counter = intdiv(time(), 30);
+    $code = (string) Totp::codeAt(TOTP_RFC_SECRET, $counter);
+
+    same($counter, Totp::verifySealed($sealed, $code));
+    same(null, Totp::verifySealed($sealed, $code, $counter));
+    same(null, Totp::verifySealed('', $code));
+    same(null, Totp::verifySealed('not-a-box', $code));
 });

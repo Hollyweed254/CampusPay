@@ -22,6 +22,7 @@ final class AdminController
         'reconciliation' => ['label' => 'Reconciliation', 'stage' => null, 'icon' => 'bi-clipboard-check', 'desc' => 'Provider status checks compared against recorded transactions.', 'role' => null],
         'api-credentials' => ['label' => 'API Credentials', 'stage' => null, 'icon' => 'bi-key', 'desc' => 'Key rotation and revocation for integrations.', 'role' => 'superadmin'],
         'users' => ['label' => 'Users and Administrators', 'stage' => null, 'icon' => 'bi-people', 'desc' => 'Administrator accounts and role management.', 'role' => 'superadmin'],
+        'security' => ['label' => 'Security', 'stage' => null, 'icon' => 'bi-shield-lock', 'desc' => 'Your account\'s two-factor authentication and sign-in protection.', 'role' => null],
         'audit-logs' => ['label' => 'Audit Logs', 'stage' => null, 'icon' => 'bi-journal-text', 'desc' => '', 'role' => null],
         'settings' => ['label' => 'Settings', 'stage' => null, 'icon' => 'bi-gear', 'desc' => 'System configuration and environment readiness.', 'role' => 'superadmin'],
     ];
